@@ -60,6 +60,9 @@ namespace gazebo
     /// ImageStamped message.
     public: virtual void OnNewFrame(const rendering::CameraPtr cam,
                                     const transport::PublisherPtr pub);
+    /// \brief Name of the camera
+    protected: std::string cameraName_;
+
     /// \brief Root topic name for publisher
     protected: std::string topic_;
 

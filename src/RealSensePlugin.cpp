@@ -60,6 +60,11 @@ void RealSensePlugin::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf)
   // Store a pointer to the this model
   this->rsModel = _model;
 
+  if (_sdf->HasElement("cameraName"))
+    cameraName_ = _sdf->GetElement("cameraName")->GetValue()->GetAsString() + "_";
+  else
+    cameraName_  = "cam";
+
   // Store a pointer to the world
   this->world = this->rsModel->GetWorld();
 
@@ -69,15 +74,15 @@ void RealSensePlugin::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf)
   // Get Cameras Renderers
   this->depthCam =
       std::dynamic_pointer_cast<sensors::DepthCameraSensor>(
-          smanager->GetSensor(DEPTH_CAMERA_NAME))->DepthCamera();
+          smanager->GetSensor(cameraName_ + DEPTH_CAMERA_NAME))->DepthCamera();
   this->ired1Cam = std::dynamic_pointer_cast<sensors::CameraSensor>(
-                                smanager->GetSensor(IRED1_CAMERA_NAME))
+                                smanager->GetSensor(cameraName_ + IRED1_CAMERA_NAME))
                                 ->Camera();
   this->ired2Cam = std::dynamic_pointer_cast<sensors::CameraSensor>(
-                                smanager->GetSensor(IRED2_CAMERA_NAME))
+                                smanager->GetSensor(cameraName_ + IRED2_CAMERA_NAME))
                                 ->Camera();
   this->colorCam = std::dynamic_pointer_cast<sensors::CameraSensor>(
-                                smanager->GetSensor(COLOR_CAMERA_NAME))
+                                smanager->GetSensor(cameraName_ + COLOR_CAMERA_NAME))
                                 ->Camera();
 
   // Check if camera renderers have been found successfuly

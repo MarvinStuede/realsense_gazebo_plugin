@@ -10,10 +10,10 @@
         Configured to work with Gazebo if desired.
 -->
 <robot xmlns:xacro="http://ros.org/wiki/xacro">
-<xacro:macro name="realsense-rs200">
+<xacro:macro name="realsense-rs200" params="name ros_topic">
 
     <!-- Camera link -->
-    <link name="rs200_camera">
+    <link name="${name}_link">
         <visual>
             <origin rpy="0 0 0" xyz="0 0 0"/>
             <geometry>
@@ -39,35 +39,35 @@
     </link>
 
     <!-- Virtual links representing the cameras positons and orientations-->
-    <link name="color" />
-    <link name="depth" />
-    <link name="ired1" />
-    <link name="ired2" />
+    <link name="${name}_color_link" />
+    <link name="${name}_depth_link" />
+    <link name="${name}_ired1_link" />
+    <link name="${name}_ired2_link" />
 
     <!-- Joints positioning the virtual links with respect to the camera main link-->
-    <joint name="color_joint" type="fixed">
-        <parent link="rs200_camera" />
-        <child link="color" />
+    <joint name="${name}_color_joint" type="fixed">
+        <parent link="${name}_link" />
+        <child link="${name}_color_link" />
         <!-- <origin xyz="0 -0.046 0.004" rpy="0 0 0"/> -->
         <!-- The default position is change since in Rviz the cloud depth axis is Z not X-->
         <origin xyz="0 -0.046 0.004" rpy="${pi/2} ${pi} ${pi/2}"/>
     </joint>
 
-    <joint name="depth_joint" type="fixed">
-        <parent link="rs200_camera" />
-        <child link="depth" />
+    <joint name="${name}_depth_joint" type="fixed">
+        <parent link="${name}_link" />
+        <child link="${name}_depth_link" />
         <origin xyz="0 -0.03 0.004" rpy="0 0 0"/>
     </joint>
 
-    <joint name="ired1_joint" type="fixed">
-        <parent link="rs200_camera" />
-        <child link="ired1" />
+    <joint name="${name}_ired1_joint" type="fixed">
+        <parent link="${name}_link" />
+        <child link="${name}_ired1_link" />
         <origin xyz="0 -0.06 0.004" rpy="0 0 0"/>
     </joint>
 
-    <joint name="ired2_joint" type="fixed">
-        <parent link="rs200_camera" />
-        <child link="ired2" />
+    <joint name="${name}_ired2_joint" type="fixed">
+        <parent link="${name}_link" />
+        <child link="${name}_ired2_link" />
         <origin xyz="0 0.01 0.004" rpy="0 0 0"/>
     </joint>
 
@@ -76,12 +76,14 @@
 
     <!-- Load plugin to the model ("robot" in urdf format)-->
     <gazebo>
-        <plugin name="realsense_plugin" filename="librealsense_gazebo_plugin.so"/>
+        <plugin name="${name}_realsense_plugin" filename="librealsense_gazebo_plugin.so">
+          <topicName>${ros_topic}</topicName>
+        </plugin>
         <!--<pose frame="">0 0 0.015 0 0 0</pose>-->
     </gazebo>
 
     <!-- Load parameters to model's main link-->
-    <gazebo reference="rs200_camera">
+    <gazebo reference="${name}_link">
         <self_collide>0</self_collide>
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
@@ -117,7 +119,7 @@
             </camera>
             <always_on>1</always_on>
             <update_rate>60</update_rate>
-            <visualize>1</visualize>
+            <visualize>0</visualize>
         </sensor>
         <sensor name="ired1" type="camera">
             <pose frame="">0 -0.06 0.004 0 0 0</pose>

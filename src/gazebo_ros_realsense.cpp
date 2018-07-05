@@ -34,13 +34,18 @@ void GazeboRosRealsense::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf)
   }
   ROS_INFO("Realsense Gazebo ROS plugin loading.");
 
+  if (_sdf->HasElement("topicName"))
+    topic_ = _sdf->GetElement("topicName")->GetValue()->GetAsString();
+  else
+    topic_ = "realsense";
+
   RealSensePlugin::Load(_model, _sdf);
 
-  this->rosnode_ = new ros::NodeHandle("/realsense");
+  this->rosnode_ = new ros::NodeHandle(topic_);
 
   // initialize camera_info_manager
   this->camera_info_manager_.reset(
-    new camera_info_manager::CameraInfoManager(*this->rosnode_, "realsense"));
+    new camera_info_manager::CameraInfoManager(*this->rosnode_, topic_));
 
   this->itnode_ = new image_transport::ImageTransport(*this->rosnode_);
 
@@ -173,4 +178,3 @@ namespace
     return info_msg;
   }
 }
-

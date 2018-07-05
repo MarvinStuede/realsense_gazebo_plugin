@@ -60,6 +60,8 @@ namespace gazebo
     /// ImageStamped message.
     public: virtual void OnNewFrame(const rendering::CameraPtr cam,
                                     const transport::PublisherPtr pub);
+    /// \brief Root topic name for publisher
+    protected: std::string topic_;
 
     /// \brief Pointer to the model containing the plugin.
     protected: physics::ModelPtr rsModel;

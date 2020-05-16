@@ -116,6 +116,9 @@ namespace gazebo
 
     /// \brief Pointer to the World Update event connection.
     protected: event::ConnectionPtr updateConnection;
+
+    /// \brief String to hold the camera prefix
+    protected: std::string prefix;
   };
 }
 #endif

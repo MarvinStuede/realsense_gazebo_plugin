@@ -3,7 +3,8 @@
 
 namespace
 {
-  sensor_msgs::CameraInfo cameraInfo(const sensor_msgs::Image& image);
+  std::string extractCameraName(const std::string& name);
+  sensor_msgs::CameraInfo cameraInfo(const sensor_msgs::Image& image, float horizontal_fov);
 }
 
 namespace gazebo
@@ -11,18 +12,15 @@ namespace gazebo
 // Register the plugin
 GZ_REGISTER_MODEL_PLUGIN(GazeboRosRealsense)
 
-/////////////////////////////////////////////////
 GazeboRosRealsense::GazeboRosRealsense()
 {
 }
 
-/////////////////////////////////////////////////
 GazeboRosRealsense::~GazeboRosRealsense()
 {
   ROS_DEBUG_STREAM_NAMED("realsense_camera", "Unloaded");
 }
 
-/////////////////////////////////////////////////
 void GazeboRosRealsense::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf)
 {
   // Make sure the ROS node for Gazebo has already been initialized
@@ -34,18 +32,13 @@ void GazeboRosRealsense::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf)
   }
   ROS_INFO("Realsense Gazebo ROS plugin loading.");
 
-  if (_sdf->HasElement("topicName"))
-    topic_ = _sdf->GetElement("topicName")->GetValue()->GetAsString();
-  else
-    topic_ = "realsense";
-
   RealSensePlugin::Load(_model, _sdf);
 
-  this->rosnode_ = new ros::NodeHandle(topic_);
+  this->rosnode_ = new ros::NodeHandle(this->GetHandle());
 
   // initialize camera_info_manager
   this->camera_info_manager_.reset(
-    new camera_info_manager::CameraInfoManager(*this->rosnode_, topic_));
+    new camera_info_manager::CameraInfoManager(*this->rosnode_, this->GetHandle()));
 
   this->itnode_ = new image_transport::ImageTransport(*this->rosnode_);
 
@@ -55,57 +48,35 @@ void GazeboRosRealsense::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf)
   this->depth_pub_ = this->itnode_->advertiseCamera("camera/depth/image_raw", 2);
 }
 
-/////////////////////////////////////////////////
 void GazeboRosRealsense::OnNewFrame(const rendering::CameraPtr cam,
                                     const transport::PublisherPtr pub)
 {
+#if GAZEBO_MAJOR_VERSION >= 9
+  common::Time current_time = this->world->SimTime();
+#else
   common::Time current_time = this->world->GetSimTime();
+#endif
 
   // identify camera
-  std::string camera_id = cam->Name();
-  image_transport::CameraPublisher* image_pub;
-  if (camera_id.find(COLOR_CAMERA_NAME) != std::string::npos)
-  {
-    camera_id = COLOR_CAMERA_NAME;
-    image_pub = &(this->color_pub_);
-  }
-  else if (camera_id.find(IRED1_CAMERA_NAME) != std::string::npos)
-  {
-    camera_id = IRED1_CAMERA_NAME;
-    image_pub = &(this->ir1_pub_);
-  }
-  else if (camera_id.find(IRED2_CAMERA_NAME) != std::string::npos)
-  {
-    camera_id = IRED2_CAMERA_NAME;
-    image_pub = &(this->ir2_pub_);
-  }
-  else
-  {
-    ROS_ERROR("Unknown camera name\n");
-    camera_id = COLOR_CAMERA_NAME;
-    image_pub = &(this->color_pub_);
-  }
+  std::string camera_id = extractCameraName(cam->Name());
+  const std::map<std::string, image_transport::CameraPublisher*> camera_publishers = {
+    {COLOR_CAMERA_NAME, &(this->color_pub_)},
+    {IRED1_CAMERA_NAME, &(this->ir1_pub_)},
+    {IRED2_CAMERA_NAME, &(this->ir2_pub_)},
+  };
+  const auto image_pub = camera_publishers.at(camera_id);
 
   // copy data into image
-  this->image_msg_.header.frame_id = camera_id;
+  this->image_msg_.header.frame_id = prefix+camera_id;
   this->image_msg_.header.stamp.sec = current_time.sec;
   this->image_msg_.header.stamp.nsec = current_time.nsec;
 
   // set image encoding
-  std::string pixel_format = cam->ImageFormat();
-  if (pixel_format == "L_INT8")
-  {
-    pixel_format = sensor_msgs::image_encodings::MONO8;
-  }
-  else if (pixel_format == "RGB_INT8")
-  {
-    pixel_format = sensor_msgs::image_encodings::RGB8;
-  }
-  else
-  {
-    ROS_ERROR("Unsupported Gazebo ImageFormat\n");
-    pixel_format = sensor_msgs::image_encodings::BGR8;
-  }
+  const std::map<std::string, std::string> supported_image_encodings = {
+    {"L_INT8", sensor_msgs::image_encodings::MONO8},
+    {"RGB_INT8", sensor_msgs::image_encodings::RGB8},
+  };
+  const auto pixel_format = supported_image_encodings.at(cam->ImageFormat());
 
   // copy from simulation image to ROS msg
   fillImage(this->image_msg_,
@@ -114,22 +85,31 @@ void GazeboRosRealsense::OnNewFrame(const rendering::CameraPtr cam,
     cam->ImageDepth() * cam->ImageWidth(),
     reinterpret_cast<const void*>(cam->ImageData()));
 
-  sensor_msgs::CameraInfo cam_info_msg = cameraInfo(this->image_msg_);
+  // identify camera rendering
+  const std::map<std::string, rendering::CameraPtr> cameras = {
+    {COLOR_CAMERA_NAME, this->colorCam},
+    {IRED1_CAMERA_NAME, this->ired1Cam},
+    {IRED2_CAMERA_NAME, this->ired2Cam},
+  };
 
   // publish to ROS
-  image_pub->publish(this->image_msg_, cam_info_msg);
+  auto camera_info_msg = cameraInfo(this->image_msg_, cameras.at(camera_id)->HFOV().Radian());
+  image_pub->publish(this->image_msg_, camera_info_msg);
 }
 
-/////////////////////////////////////////////////
 void GazeboRosRealsense::OnNewDepthFrame()
 {
   // get current time
+#if GAZEBO_MAJOR_VERSION >= 9
+  common::Time current_time = this->world->SimTime();
+#else
   common::Time current_time = this->world->GetSimTime();
+#endif
 
   RealSensePlugin::OnNewDepthFrame();
 
   // copy data into image
-  this->depth_msg_.header.frame_id = COLOR_CAMERA_NAME;
+  this->depth_msg_.header.frame_id = prefix+COLOR_CAMERA_NAME;
   this->depth_msg_.header.stamp.sec = current_time.sec;
   this->depth_msg_.header.stamp.nsec = current_time.nsec;
 
@@ -143,9 +123,8 @@ void GazeboRosRealsense::OnNewDepthFrame()
     2 * this->depthCam->ImageWidth(),
     reinterpret_cast<const void*>(this->depthMap.data()));
 
-  sensor_msgs::CameraInfo depth_info_msg = cameraInfo(this->depth_msg_);
-
   // publish to ROS
+  auto depth_info_msg = cameraInfo(this->depth_msg_, this->depthCam->HFOV().Radian());
   this->depth_pub_.publish(this->depth_msg_, depth_info_msg);
 }
 
@@ -153,7 +132,17 @@ void GazeboRosRealsense::OnNewDepthFrame()
 
 namespace
 {
-  sensor_msgs::CameraInfo cameraInfo(const sensor_msgs::Image& image)
+  std::string extractCameraName(const std::string& name)
+  {
+    if (name.find(COLOR_CAMERA_NAME) != std::string::npos) return COLOR_CAMERA_NAME;
+    if (name.find(IRED1_CAMERA_NAME) != std::string::npos) return IRED1_CAMERA_NAME;
+    if (name.find(IRED2_CAMERA_NAME) != std::string::npos) return IRED2_CAMERA_NAME;
+
+    ROS_ERROR("Unknown camera name");
+    return COLOR_CAMERA_NAME;
+  }
+
+  sensor_msgs::CameraInfo cameraInfo(const sensor_msgs::Image& image, float horizontal_fov)
   {
     sensor_msgs::CameraInfo info_msg;
 
@@ -161,7 +150,7 @@ namespace
     info_msg.height = image.height;
     info_msg.width = image.width;
 
-    float focal = 463.889;
+    float focal = 0.5 * image.width / tan(0.5 * horizontal_fov);
 
     info_msg.K[0] = focal;
     info_msg.K[4] = focal;
@@ -178,3 +167,4 @@ namespace
     return info_msg;
   }
 }
+
